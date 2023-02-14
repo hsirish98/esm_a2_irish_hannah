@@ -1,0 +1,221 @@
+---
+title: "Task 1"
+author: "Hannah Irish"
+date: "2023-02-07"
+output: 
+ html_document:
+   code_folding: hide
+---
+
+```{r setup, include=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(cowplot)
+library(AICcmodavg)
+library(tidymodels)
+```
+
+```{css, echo=FALSE}
+h1 {
+  text-align: center;
+}
+```
+
+This chunk reads in the data and makes a smaller data frame with just the variables of interest and converts species to factor so we can use it for the binary logistic regression:
+```{r, message=FALSE}
+palmettos <- read_csv(here("task1","palmetto.csv"))
+
+palmettos_mod <- palmettos %>%
+  select(height, width, species, length, green_lvs) %>%
+  drop_na() %>%
+  mutate(species = as.factor(species))
+##levels(palmettos_mod$species) species "1" is model 0 (Serenoa repens or Saw Palmetto)
+```
+
+
+Data Exploration
+
+```{r, warning=FALSE, message=FALSE, fig.cap="Figure 1: An exploration of the variables that could be used as predictors, length, height, width, and number of green leaves. At a glance we estimate that the number of green leaves might be the best predictor variable in determining the species of palm."}
+height_plot <- ggplot(palmettos_mod, aes(x=species, y=height)) + 
+  geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
+  labs(x="Species", y="Tree Height") +
+  scale_colour_manual(values=c("paleturquoise3", "blue"))+
+  stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "crossbar", width = 1)+
+  theme_minimal()
+
+length_plot <- ggplot(palmettos_mod, aes(x=species, y=length)) + 
+  geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
+  labs(x="Species", y="Tree Length") +
+  scale_colour_manual(values=c("pink", "red"))+
+  stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "crossbar", width = 1)+
+  theme_minimal()
+
+width_plot <- ggplot(palmettos_mod, aes(x=species, y=width)) + 
+  geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
+  labs(x="Species", y="Tree Width") +
+  scale_colour_manual(values=c("slateblue1", "purple4"))+ 
+  stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "crossbar", width = 1)+
+  theme_minimal()
+
+leaf_plot <- ggplot(palmettos_mod, aes(x=species, y=green_lvs)) + 
+  geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
+  labs(x="Species", y="# of Green Leaves") +
+  scale_colour_manual(values=c("darkolivegreen3", "darkgreen"))+
+   stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "crossbar", width = 1)+
+  theme_minimal()
+
+cowplot::plot_grid(height_plot, length_plot, width_plot, leaf_plot)
+```
+```{r}
+
+```
+
+
+
+This chunk forms the models:
+```{r}
+
+##species 1 is the 0 of this regression
+form_1 <- species ~  height + width + length + green_lvs
+
+mod_1 <- glm(formula = form_1,
+                    data = palmettos_mod,
+                    family = "binomial")
+
+form_2 <- species ~  height + width + green_lvs
+
+mod_2 <- glm(formula = form_2,
+                    data = palmettos_mod,
+                    family = "binomial")
+
+
+```
+
+
+```{r}
+mod_2_fit<- mod_2 %>% 
+  broom::augment(type.predict = "response")
+
+ggplot(data=mod_2_fit, aes(x=width, y=  .fitted)) +
+  geom_point(aes(color=species)) +
+  geom_smooth(aes(color=species), se=FALSE) +
+  labs(x="# Green Leaves", y = "Probability of outcome(1 or Saw Palmetto)")
+```
+
+Set up cross validation
+```{r}
+set.seed(805)
+
+n_folds <- 10
+
+fold_vector <- rep(1:n_folds, length.out = nrow(palmettos_mod))
+
+palmetto_kfold <- palmettos_mod %>%
+  mutate(fold = sample(fold_vector, size=n(), replace=FALSE))
+
+```
+
+
+```{r}
+
+acc_func <- function(calculated, real) {
+  is_accurate <- ifelse(calculated == real, 1, 0)
+  
+  return(mean(is_accurate, na.rm = TRUE))
+}
+
+calc_fold <- function(i, data_frame, formula) {
+  test_df <- data_frame %>%
+    filter(fold == i)
+  train_df <- data_frame %>%
+    filter(fold != i)
+  
+  kfold_palms_blr <- glm(formula, data = train_df, family = 'binomial')
+  
+  kfold_predicted <- test_df %>%
+    mutate(blr = predict(kfold_palms_blr, test_df, type = 'response')) %>%
+    mutate(pred = ifelse(blr > 0.50, '2', '1'))
+  
+  kfold_accuracy <- kfold_predicted %>%
+    summarize(blr_acc = acc_func(species, pred)) 
+  
+  return(kfold_accuracy)
+}
+
+##performing the cross validation
+
+k_fold <- 10
+
+results_mod1 <- purrr::map(.x = 1:k_fold, 
+                                .f = calc_fold, 
+                                palmetto_kfold, 
+                                formula = form_1) %>%            
+  bind_rows() %>%
+   mutate(mdl = 'form1')
+
+results_mod2 <- purrr::map(.x = 1:k_fold, 
+                                .f = calc_fold, 
+                                palmetto_kfold, 
+                                formula = form_2) %>%              
+  bind_rows() %>%
+  mutate(mdl = 'form2')
+
+results_purrr <- bind_rows(results_mod1, results_mod2) %>%
+  group_by(mdl) %>%
+  summarize(mean_acc = mean(blr_acc))
+
+results_purrr
+##indicates so far that formula 1 is the better option
+```
+
+Performing AIC and BIC to see if this agrees with results of binomial linear regression
+
+
+```{r}
+
+Accuracies <- paste(round(results_purrr$mean_acc,2)*100, "%")
+Model <- c("Model 1", "Model 2")
+Accuracy <- Accuracies
+AIC <- c(round(AIC(mod_1)), round(AIC(mod_2)))
+BIC <- c(round(BIC(mod_1)), round(BIC(mod_2)))
+results_table <- data.frame(Model,Accuracies, AIC, BIC)
+knitr::kable(results_table)
+```
+
+```{r}
+final_model  <- glm(form_1, data = palmettos_mod, family = 'binomial')
+final_tidy <- broom::tidy(final_model) %>%
+  mutate(p.value = ifelse(p.value<0, p.value, "< 0"))
+
+knitr::kable(final_tidy)
+```
+
+The Final Model for predicting Palmetto Species is 
+`r equatiomatic::extract_eq(final_model, wrap=TRUE)`
+
+```{r}
+fitted_model <- final_model %>%
+  broom::augment(type.predict = "response")
+
+classification <- fitted_model %>%
+  mutate(guess = ifelse(.fitted>0.5, 2, 1), correct = ifelse(guess==species, 1, 0)) %>%
+ select(species, .fitted, guess, correct) 
+  
+model <- "Final Model"
+num_correct <- sum(classification$correct)
+num_incorrect <- nrow(classification) - num_correct
+percent_correct <- round(num_correct/nrow(classification)*100,2)
+percent_correct <- paste(percent_correct, "%")
+
+
+predictor_df <- data.frame(model,num_correct, num_incorrect, percent_correct)
+
+knitr::kable(predictor_df, col.names = c("Model Used","# Predicted Correctly", "Number Predicted Incorrectly", "Percent Predicted Correctly"))
+```
+
