@@ -2,9 +2,138 @@
 title: "Task 2"
 author: "Hannah Irish"
 date: "2023-02-07"
-output: html_document
+output: 
+  html_document:
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE )
+library(tidyverse)
+library(Metrics)
 ```
+
+This chunk reads in the data
+```{r}
+lizards <- read_csv(here::here("task2","lizards.csv"))
+```
+
+This chunk plots an initial look at the data to see what kind of trend we're dealing with
+```{r, fig.cap="Figure 1. Lizard widths as a function of length."}
+lizard_explore <- ggplot(data=lizards)+
+  geom_point(aes(x=SV_length, y=weight, color=sex)) +
+  labs(x="Length", y="Width", title="Total Lizard Widths vs. Their Lengths, By Sex") +
+  scale_color_manual(values=c("deepskyblue1", "darkorange3")) +
+    theme_minimal()
+lizard_explore
+
+```
+
+This chunk creates a data frame that has the log values and visualizes it with ggplot
+```{r, fig.cap="Figure 2. Plot of the log of the lizard width versus the log of the length"}
+log_lizards <- lizards %>%
+  mutate(log_weight = log(weight), 
+         log_length = log(SV_length))
+
+log_explore <- ggplot(data=log_lizards)+
+  geom_point(aes(x=log_length, y=log_weight, color=sex)) +
+  labs(x="Log Length", y="Log Width", title="Log of All Lizard Widths by Log of Length, B Sex") +
+  scale_color_manual(values=c("darkslateblue", "coral3")) +
+    theme_minimal()
+log_explore
+```
+
+This chunk creates the linear model to retrieve coefficients to start as a guess for the NLS
+```{r}
+guess_model <- lm(log_weight ~ log_length, data=log_lizards)
+
+#coefficients(guess_model)
+
+coeff_vec <- guess_model$coefficients
+
+
+```
+
+The following is the linear model generated from performing a linear regression of the log of the width and length:
+
+`r equatiomatic::extract_eq(guess_model, wrap=TRUE)`
+
+
+This chunk creates the function that will be the formula I fit for NLS
+```{r}
+calc_weight <- function(a, b, L){
+  out <- a*(L^b)
+  return(out)
+}
+
+
+```
+
+
+This chunk performs the NLS
+```{r}
+my_nls=nls(weight~calc_weight(a,b,SV_length),
+                  data=lizards,
+                  start=list(a=exp(coeff_vec[1]),b=coeff_vec[2]),
+                  trace=TRUE)
+
+```
+
+This chunk uses the NLS to predict the lizard's width given its length and the function
+```{r}
+liz_predict <- lizards %>%
+  mutate(predict=predict(my_nls, newdata=.))
+
+```
+
+This chunk provides the table output for the model
+```{r}
+nls_tidy <- broom::tidy(my_nls) %>%
+  select(1:3,5)
+knitr::kable(nls_tidy, col.names=c("Term", "Estimate", "Standard Error", "P-Value")) 
+```
+
+This chunk filters the lizards into just the Western Whiptails
+```{r}
+whiptails <- lizards %>%
+  filter(spp=="CNTI")
+
+```
+
+
+This chunk performs an NLS on just the Western Whiptails
+```{r}
+whiptail_nls=nls(weight~calc_weight(a,b,SV_length),
+                  data=whiptails,
+                  start=list(a=exp(coeff_vec[1]),b=coeff_vec[2]),
+                  trace=TRUE)
+```
+
+This chunk adds the predictions from both the Whiptail-only NLS as well as the general NLS fitted to the whole data set, to the data frame containing the whiptails only.
+```{r}
+whip_predict <- whiptails %>%
+  mutate(predict=predict(whiptail_nls, newdata=.), 
+         general_predicts=predict(my_nls, newdata=.),
+         specific_rmse=rmse(weight,predict), 
+         general_rmse=rmse(weight,general_predicts))
+
+general_rmse_avg <- mean(whip_predict$general_rmse)
+specific_rmse_avg <- mean(whip_predict$specific_rmse)
+
+```
+
+
+This chunk plots the Whiptail width versus length data with the lines formed from both the general and Whiptail-specific NLS
+```{r, fig.cap="Figure 3. A plot of the Whiptail-only widths versus lengths as well as the NLS fit of the data from both the general NLS model fit to the whole lizard data set and the Whiptail-specific one."}
+ggplot(data=whip_predict)+
+  geom_point(aes(x=SV_length, y=weight, color=sex)) +
+  labs(x="Length", y="Width", title = "Western Whiptail Width versus Length") +
+  scale_color_manual(values=c("darkorchid1", "chocolate1")) +
+  geom_smooth(aes(x=SV_length,y=predict),color='gray44', alpha=0.3) +
+  geom_smooth(aes(x=SV_length, y=general_predicts), color="black", alpha=0.3)+
+    theme_minimal()
+
+
+```
+
+The general NLS model mean RMSE is `r round(general_rmse_avg,2) ` and the Whiptail-specific model mean RMSE is `r round(specific_rmse_avg, 2)`, indicating that the Whiptail-specific NLS is the superior model

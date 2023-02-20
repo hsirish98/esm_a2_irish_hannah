@@ -21,10 +21,16 @@ library(tidymodels)
 h1 {
   text-align: center;
 }
+
 ```
 
+
+# Introduction
+
+|   The data contain information about two species of palmetto growing in south-central Florida from 1981-2017, including the number of green leaves, the widest length of the canopy, the maximum height, and the maximum width of the canopy perpendicular to the length. The task is to perform a binary logistic regression to determine which of two formulas is a better predictor of the palmetto species based on these input data.
+
 This chunk reads in the data and makes a smaller data frame with just the variables of interest and converts species to factor so we can use it for the binary logistic regression:
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
 palmettos <- read_csv(here("task1","palmetto.csv"))
 
 palmettos_mod <- palmettos %>%
@@ -34,10 +40,10 @@ palmettos_mod <- palmettos %>%
 ##levels(palmettos_mod$species) species "1" is model 0 (Serenoa repens or Saw Palmetto)
 ```
 
+# Data Visualization
 
-Data Exploration
-
-```{r, warning=FALSE, message=FALSE, fig.cap="Figure 1: An exploration of the variables that could be used as predictors, length, height, width, and number of green leaves. At a glance we estimate that the number of green leaves might be the best predictor variable in determining the species of palm."}
+This chunk generates graphs for data exploration (species vs. each input variable)
+```{r, warning=FALSE, message=FALSE, fig.cap="Figure 1: An exploration of the variables that could be used as predictors: length, height, width, and number of green leaves. The black line represents the median of each measurement. At a glance we estimate that the number of green leaves might be the best predictor variable in determining the species of palm."}
 height_plot <- ggplot(palmettos_mod, aes(x=species, y=height)) + 
   geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
   labs(x="Species", y="Tree Height") +
@@ -48,7 +54,7 @@ height_plot <- ggplot(palmettos_mod, aes(x=species, y=height)) +
 
 length_plot <- ggplot(palmettos_mod, aes(x=species, y=length)) + 
   geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
-  labs(x="Species", y="Tree Length") +
+  labs(x="Species", y="Canopy Length") +
   scale_colour_manual(values=c("pink", "red"))+
   stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
                  geom = "crossbar", width = 1)+
@@ -56,7 +62,7 @@ length_plot <- ggplot(palmettos_mod, aes(x=species, y=length)) +
 
 width_plot <- ggplot(palmettos_mod, aes(x=species, y=width)) + 
   geom_jitter(cex=0.2,aes(color=species),show.legend=FALSE) +
-  labs(x="Species", y="Tree Width") +
+  labs(x="Species", y="Canopy Width") +
   scale_colour_manual(values=c("slateblue1", "purple4"))+ 
   stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
                  geom = "crossbar", width = 1)+
@@ -72,11 +78,56 @@ leaf_plot <- ggplot(palmettos_mod, aes(x=species, y=green_lvs)) +
 
 cowplot::plot_grid(height_plot, length_plot, width_plot, leaf_plot)
 ```
-```{r}
+
+This chunk generates graphs for data exploration (each input variable vs. each other input variable)
+```{r, fig.cap="Figure 2. Each color represents Species 1 vs. Species 2. From looking at each variable plotted against each other variable, it is reinforcing the thought that the number of green leaves will be the most important indicator of species, as it creates the most recognizable clusters of species"}
+
+leaf_height_plot <- ggplot(palmettos_mod, aes(x=green_lvs, y=height)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="# of Green Leaves", y="Tree Height") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+leaf_length_plot <- ggplot(palmettos_mod, aes(x=green_lvs, y=length)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="# of Green Leaves", y="Canopy Length") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+leaf_width_plot <- ggplot(palmettos_mod, aes(x=green_lvs, y=width)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="# of Green Leaves", y="Canopy Width") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+width_height_plot <- ggplot(palmettos_mod, aes(x=width, y=height)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="Canopy Width", y="Tree Height") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+width_length_plot <- ggplot(palmettos_mod, aes(x=width, y=length)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="Canopy Width", y="Canopy Length") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+height_length_plot <- ggplot(palmettos_mod, aes(x=height, y=length)) + 
+  geom_jitter(cex=0.5,aes(color=species),show.legend=FALSE) +
+  labs(x="Tree Height", y="Canopy Length") +
+  scale_color_viridis_d()+
+  theme_minimal()
+
+plot_grid(leaf_height_plot, leaf_length_plot,leaf_width_plot,width_height_plot, width_length_plot, height_length_plot)
+
+
 
 ```
 
 
+
+
+# Methods 
 
 This chunk forms the models:
 ```{r}
@@ -98,17 +149,8 @@ mod_2 <- glm(formula = form_2,
 ```
 
 
-```{r}
-mod_2_fit<- mod_2 %>% 
-  broom::augment(type.predict = "response")
 
-ggplot(data=mod_2_fit, aes(x=width, y=  .fitted)) +
-  geom_point(aes(color=species)) +
-  geom_smooth(aes(color=species), se=FALSE) +
-  labs(x="# Green Leaves", y = "Probability of outcome(1 or Saw Palmetto)")
-```
-
-Set up cross validation
+This chunk sets up cross validation
 ```{r}
 set.seed(805)
 
@@ -122,6 +164,7 @@ palmetto_kfold <- palmettos_mod %>%
 ```
 
 
+This chunk performs the cross validation using purrr::map
 ```{r}
 
 acc_func <- function(calculated, real) {
@@ -170,14 +213,13 @@ results_purrr <- bind_rows(results_mod1, results_mod2) %>%
   group_by(mdl) %>%
   summarize(mean_acc = mean(blr_acc))
 
-results_purrr
+#results_purrr
 ##indicates so far that formula 1 is the better option
 ```
 
-Performing AIC and BIC to see if this agrees with results of binomial linear regression
 
-
-```{r}
+This chunk compares output of cross validation, AIC, and BIC to determine the best model.
+```{r, fig.cap="Model 1 has the lowest AIC and BIC and highest accuracy of determining the species based on 10-fold cross validation."}
 
 Accuracies <- paste(round(results_purrr$mean_acc,2)*100, "%")
 Model <- c("Model 1", "Model 2")
@@ -185,20 +227,28 @@ Accuracy <- Accuracies
 AIC <- c(round(AIC(mod_1)), round(AIC(mod_2)))
 BIC <- c(round(BIC(mod_1)), round(BIC(mod_2)))
 results_table <- data.frame(Model,Accuracies, AIC, BIC)
-knitr::kable(results_table)
-```
+knitr::kable(results_table, caption ="Table 1. Comparing the AIC, BIC, and Accuracy from 10-FOld Cross Validation")
 
-```{r}
 final_model  <- glm(form_1, data = palmettos_mod, family = 'binomial')
-final_tidy <- broom::tidy(final_model) %>%
-  mutate(p.value = ifelse(p.value<0, p.value, "< 0"))
-
-knitr::kable(final_tidy)
 ```
 
-The Final Model for predicting Palmetto Species is 
+# Results
+
+Based on all three model selection approaches, the final model for predicting Palmetto Species is Model 2:
 `r equatiomatic::extract_eq(final_model, wrap=TRUE)`
 
+```{r,}
+
+final_tidy <- broom::tidy(final_model) %>%
+  mutate(p.value = ifelse(p.value<0, p.value, "< 0")) %>%
+  select(term, estimate, std.error,p.value)
+
+knitr::kable(final_tidy, col.names=c("Variable", "Coefficient", "Standard Error", "P.Value"), caption="Table 2: The results of the final binary logistic model.")
+
+
+```
+
+# Applying the Model to Make a Prediction
 ```{r}
 fitted_model <- final_model %>%
   broom::augment(type.predict = "response")
@@ -216,6 +266,15 @@ percent_correct <- paste(percent_correct, "%")
 
 predictor_df <- data.frame(model,num_correct, num_incorrect, percent_correct)
 
-knitr::kable(predictor_df, col.names = c("Model Used","# Predicted Correctly", "Number Predicted Incorrectly", "Percent Predicted Correctly"))
+knitr::kable(predictor_df, col.names = c("Model Used","# Predicted Correctly", "Number Predicted Incorrectly", "Percent Predicted Correctly"), caption = "Table 3. The Final Model predicted the right species 91.7% of the time.")
 ```
 
+# Conclusion
+
+|   Model 1, which used al 4 of the predictor variables, was the more accurate model and had the lowest AIC and BIC scores. It was able to predict the right species 91.7% of the time. Our exploration of the data indicated that the number of green leaves was likely to be the most important, and the coefficients of the final model reinforced this, as the green leaves coefficient was two orders of magnitude higher than the tree height or canopy width. 
+
+|   This analysis indicates that, though the coefficient for canopy length is relatively small, it still contributes to the accuracy of the binary logistic regression prediction of species classification without too much of a penalty for adding an extra term. 
+
+## References
+
+Data source: Abrahamson, W.G. 2019. Survival, growth and biomass estimates of two dominant palmetto species of south-central Florida from 1981 - 2017, ongoing at 5-year intervals ver 1. Environmental Data Initiative. https://doi.org/10.6073/pasta/f2f96ec76fbbd4b9db431c79a770c4d5
