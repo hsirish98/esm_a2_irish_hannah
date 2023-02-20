@@ -13,37 +13,55 @@ library(tidyverse)
 library(Metrics)
 ```
 
-This chunk reads in the data
+```{css, echo=FALSE}
+h1 {
+  text-align: center;
+}
+
+```
+
+# Introduction
+
+|   The data is on lizards sampled from pitfall traps in the Jornada Basin LTER site, from 1989-2006. The objective of this study is to fit a non-linear least squares (NLS) model of Lizard Weight as a function of the Snout-vent length ("SV_Length"). The second objective is to test whether an NLS model trained on the entire lizard dataset or one trained on only a specific species will be a better predictor of Weight vs. SV_Length for that species.
+
+
+# Data Visualization
+
+This chunk reads in the data:
 ```{r}
 lizards <- read_csv(here::here("task2","lizards.csv"))
 ```
 
-This chunk plots an initial look at the data to see what kind of trend we're dealing with
-```{r, fig.cap="Figure 1. Lizard widths as a function of length."}
+This chunk plots an initial look at the data to see what kind of trends exist:
+```{r, fig.cap="Figure 1. Lizard weights as a function of length."}
 lizard_explore <- ggplot(data=lizards)+
   geom_point(aes(x=SV_length, y=weight, color=sex)) +
-  labs(x="Length", y="Width", title="Total Lizard Widths vs. Their Lengths, By Sex") +
+  labs(x="Length", y="Weight", title="Total Lizard Weights vs. Their Lengths, By Sex") +
   scale_color_manual(values=c("deepskyblue1", "darkorange3")) +
     theme_minimal()
 lizard_explore
 
 ```
 
-This chunk creates a data frame that has the log values and visualizes it with ggplot
-```{r, fig.cap="Figure 2. Plot of the log of the lizard width versus the log of the length"}
+
+This chunk also creates a plot, but of the log weight vs log SV Length:
+```{r, fig.cap="Figure 2. Plot of the log of the lizard weight versus the log of the length"}
 log_lizards <- lizards %>%
   mutate(log_weight = log(weight), 
          log_length = log(SV_length))
 
 log_explore <- ggplot(data=log_lizards)+
   geom_point(aes(x=log_length, y=log_weight, color=sex)) +
-  labs(x="Log Length", y="Log Width", title="Log of All Lizard Widths by Log of Length, B Sex") +
+  labs(x="Log Length", y="Log Weight", title="Log of All Lizard Weights by Log of Length, By Sex") +
   scale_color_manual(values=c("darkslateblue", "coral3")) +
     theme_minimal()
 log_explore
 ```
 
-This chunk creates the linear model to retrieve coefficients to start as a guess for the NLS
+
+# Methods 
+
+This chunk creates the linear model to retrieve coefficients to start as a guess for the total lizard-trained NLS:
 ```{r}
 guess_model <- lm(log_weight ~ log_length, data=log_lizards)
 
@@ -54,24 +72,23 @@ coeff_vec <- guess_model$coefficients
 
 ```
 
-The following is the linear model generated from performing a linear regression of the log of the width and length:
+The following is the linear model generated from performing a linear regression of the log of the weight and length:
 
 `r equatiomatic::extract_eq(guess_model, wrap=TRUE)`
 
 
-This chunk creates the function that will be the formula I fit for NLS
+This chunk creates the function that will be the formula I fit for NLS:
 ```{r}
 calc_weight <- function(a, b, L){
   out <- a*(L^b)
   return(out)
 }
 
-
 ```
 
 
-This chunk performs the NLS
-```{r}
+This chunk performs the NLS fitted to all the lizards:
+```{r, results=FALSE}
 my_nls=nls(weight~calc_weight(a,b,SV_length),
                   data=lizards,
                   start=list(a=exp(coeff_vec[1]),b=coeff_vec[2]),
@@ -79,21 +96,21 @@ my_nls=nls(weight~calc_weight(a,b,SV_length),
 
 ```
 
-This chunk uses the NLS to predict the lizard's width given its length and the function
+This chunk uses the NLS to predict the lizard's weight given its SV_length and the function created previously:
 ```{r}
 liz_predict <- lizards %>%
   mutate(predict=predict(my_nls, newdata=.))
 
 ```
 
-This chunk provides the table output for the model
+This chunk provides the table output for the model:
 ```{r}
 nls_tidy <- broom::tidy(my_nls) %>%
   select(1:3,5)
 knitr::kable(nls_tidy, col.names=c("Term", "Estimate", "Standard Error", "P-Value")) 
 ```
 
-This chunk filters the lizards into just the Western Whiptails
+This chunk filters the lizards into just the Western Whiptails:
 ```{r}
 whiptails <- lizards %>%
   filter(spp=="CNTI")
@@ -101,15 +118,15 @@ whiptails <- lizards %>%
 ```
 
 
-This chunk performs an NLS on just the Western Whiptails
-```{r}
+This chunk performs an NLS on just the Western Whiptails:
+```{r, results=FALSE}
 whiptail_nls=nls(weight~calc_weight(a,b,SV_length),
                   data=whiptails,
                   start=list(a=exp(coeff_vec[1]),b=coeff_vec[2]),
                   trace=TRUE)
 ```
 
-This chunk adds the predictions from both the Whiptail-only NLS as well as the general NLS fitted to the whole data set, to the data frame containing the whiptails only.
+This chunk adds the predictions from both the Whiptail-only NLS as well as the general NLS fitted to the whole data set, to the data frame containing the whiptails only:
 ```{r}
 whip_predict <- whiptails %>%
   mutate(predict=predict(whiptail_nls, newdata=.), 
@@ -123,11 +140,11 @@ specific_rmse_avg <- mean(whip_predict$specific_rmse)
 ```
 
 
-This chunk plots the Whiptail width versus length data with the lines formed from both the general and Whiptail-specific NLS
-```{r, fig.cap="Figure 3. A plot of the Whiptail-only widths versus lengths as well as the NLS fit of the data from both the general NLS model fit to the whole lizard data set and the Whiptail-specific one."}
+This chunk plots the Whiptail weight versus length data with the lines formed from both the general and Whiptail-specific NLS:
+```{r, fig.cap="Figure 3. A plot of the Whiptail-only weights versus lengths as well as the NLS fit of the data from both the general NLS model fit to the whole lizard data set and the Whiptail-specific one. The dark black line represents the NLS model fitted to the entire lizard data set whereas the lighter gray one represents the NLS model fitted only to the Whiptails"}
 ggplot(data=whip_predict)+
   geom_point(aes(x=SV_length, y=weight, color=sex)) +
-  labs(x="Length", y="Width", title = "Western Whiptail Width versus Length") +
+  labs(x="Length", y="Weight", title = "Western Whiptail Weight versus Length, by Sex") +
   scale_color_manual(values=c("darkorchid1", "chocolate1")) +
   geom_smooth(aes(x=SV_length,y=predict),color='gray44', alpha=0.3) +
   geom_smooth(aes(x=SV_length, y=general_predicts), color="black", alpha=0.3)+
@@ -136,4 +153,10 @@ ggplot(data=whip_predict)+
 
 ```
 
-The general NLS model mean RMSE is `r round(general_rmse_avg,2) ` and the Whiptail-specific model mean RMSE is `r round(specific_rmse_avg, 2)`, indicating that the Whiptail-specific NLS is the superior model
+# Conclusion
+
+The general NLS model mean RMSE is `r round(general_rmse_avg,2) ` and the Whiptail-specific model mean RMSE is `r round(specific_rmse_avg, 2)`, indicating that the ** Whiptail-specific NLS is the superior model ** as it minimizes the RMSE. In other words: on average, it predicts the weight closer to the actual lizard weight.
+
+## References
+
+Lightfoot, D. and W.G. Whitford. 2020. Lizard pitfall trap data from 11 NPP study locations at the Jornada Basin LTER site, 1989-2006 ver 37. Environmental Data Initiative. https://doi.org/10.6073/pasta/4a6e258fb49c31e222ecbbcfd128967f
